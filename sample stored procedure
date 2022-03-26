@@ -2,4 +2,81 @@ Set ansi_null on
 go
 set quoted_identifier on
 go
-Create Proc casework.s_dim_concern_type @batch_id ()
+Create Proc casework.s_dim_concern_type @batch_id () @source_system_id int, @error_message varchar(8000) out as 
+--Line no 5 tell the stored procedure name with the parameter. And here batch_id and source_system_id is audit columns.
+
+begin
+
+set nocount on
+
+select * int #distinctstagerows
+        from
+        (
+        select row_number() over(partition by stage.operational_id order by stage.operational_id) as RN
+        ,IsNUll(stage.column_name) as column name
+        ,IsNUll(B.column_name) as column name
+        ,Cast(satge.columnname as datetime2 or Date or Int) as column name
+        from stage.tablename stage
+        left_join stage.tablename B on stage.column_name = b.column_name
+        where stage.operational_id is not null and stage.operational_id <> ''
+)A where RN =1
+
+-- In line number 12 I create temp table It is up to me wheather I need to create or not.
+-- In line number 15 by this method we remove duplicate value with the condition RN = 1 this is much faster than distinct method.
+-- From line number 16 and 18 I am just doing mapping from stage table and applying transformation logic if required.
+-- In line number 20 I am applying join condition if any column is coming from another table.
+-- In line 21 I am just removing null and empty string values.
+
+Begin Transaction
+
+Begin Try
+
+update target.tablename set update_datetime = getdate()
+                            ,target.column_name = stage.column_name
+                            ,target.column_name = stage.column_name
+                            ,target.column_name = stage.column_name
+  from #distinctstagerows stage
+  inner_join target.tablename target on stage.operational_id - target.operational_id
+  where stage.column_name <> target.column_name  
+  OR stage.column_name <> target.column_name 
+  OR stage.column_name <> target.column_name 
+  
+  -- In line number 34 we are updating the target table with the help of comparing operational_}id which is mention in line number 39.
+  
+  Insert into target.tablename
+  select
+      stage.column_name
+      ,stage.column_name
+      ,stage.column_name
+      ,@source_system_id
+      ,@batchid
+      ,getdate()-- insert time
+      ,getdate()-- update_time
+      ,1
+  from #distinctstagerows stage
+  inner_join target.tablename target on stage.operational_id - target.operational_id
+  where target.operational_id = null
+  
+  --From line number 46 to 53 I am inserting the data in target table.
+  -- From line number 51 to 55 is audit column.
+  
+  End try
+  
+  Begin catch
+  IF @@trancount>0
+  begin
+  rollback transaction;
+  set @error_message = (select error_message ()+' in the sp: sp_name' 
+  select @error_message as [error_message]
+  End
+  End catch;
+   IF @@trancount>0
+   begin
+   commit transaction; 
+   END
+   END catch
+   
+   END
+  
+ 
+  
