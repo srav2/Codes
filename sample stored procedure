@@ -78,5 +78,5 @@ update target.tablename set update_datetime = getdate()
    
    END
   
- 
+ -- from line 65 to 77 is used error handling code
   
