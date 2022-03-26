@@ -1,0 +1,5 @@
+Set ansi_null on
+go
+set quoted_identifier on
+go
+Create Proc casework.s_dim_concern_type @batch_id ()
