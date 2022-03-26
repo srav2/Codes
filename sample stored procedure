@@ -1,3 +1,5 @@
+-- THIS IS SCD TYPE 1 STORED PROCEDURE BLUEPRINT.
+
 Set ansi_null on
 go
 set quoted_identifier on
