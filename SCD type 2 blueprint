@@ -1,0 +1,146 @@
+//This is Scd 2 type sp.
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER PROC [finance].[s_dim_journal] @batchid [bigint],@source_system_id [int],@error_message [varchar](8000) OUT AS 
+BEGIN
+
+    SET NOCOUNT ON
+
+	Declare @newdatetime date,@update_datetime datetime
+
+	
+	set @newdatetime = getdate()-1
+	set @update_datetime = getdate()
+
+	--Get Distinct Rows from stage
+
+SELECT * INTO #DistinctStageRows
+	    FROM 
+	 ( SELECT  row_number() over(partition by [stage].[journal_number] order by [stage].[journal_number])  as RN
+    	    ,IsNull([stage].[journal_number],'') as journal_number
+    	    ,IsNull([stage].[Status],'') as journal_status
+    		,IsNull([stage].[Source],'') as description
+    FROM [stage].[journal] stage
+	where [stage].[journal_number] IS NOT NULL 
+	  AND [stage].[journal_number] <>'' 
+	  
+   ) A WHERE RN = 1
+
+   
+	BEGIN TRANSACTION
+
+	BEGIN TRY
+
+ 	--close off existing records that have changed
+
+
+	UPDATE [finance].[journal_dim] SET scd_end_date = CASE WHEN dim.scd_start_date <> cast(getdate() as date) then @newdatetime else cast(getdate() as date) end
+	                                   ,scd_current_flag = 0
+									   ,update_datetime = @update_datetime
+									
+	FROM   [finance].[journal_dim] dim 
+	INNER JOIN #DistinctStageRows stage ON 
+	[stage].journal_number= [dim].journal_number AND [dim].scd_end_date = '2099-01-01'
+	WHERE ([stage].[journal_status] <> [dim].[journal_status]  
+	OR [stage].[description] <> [dim].[description] )  
+	
+
+	--Insert new updated records
+
+	INSERT INTO [finance].[journal_dim] 
+    SELECT 	 stage.journal_number 
+    	    ,stage.journal_status
+    		,stage.description
+		--	,stage.line_memo
+		--	,stage.worktags
+            ,cast(getdate() as date) as scd_start_date
+    		,'2099-01-01' as scd_end_date
+    		,1 as scd_current_flag
+    		,@source_system_id
+			,@batchid
+    		,getdate()
+    		,getdate()
+    		,1
+			
+   FROM #DistinctStageRows [stage] INNER JOIN  [finance].[journal_dim] [dim] 
+	ON  [stage].journal_number= [dim].journal_number AND [dim].update_datetime = @update_datetime AND [dim].scd_current_flag = 0
+	WHERE ([stage].[journal_status] <> [dim].[journal_status]  
+	OR [stage].[description] <> [dim].[description]  )
+	
+
+     
+
+	--Insert new records which are not exists in dim
+
+	INSERT INTO [finance].[journal_dim] 
+  SELECT 	 stage.journal_number 
+    	    ,stage.journal_status
+    		,stage.description
+            ,cast(getdate() as date) as scd_start_date
+    		,'2099-01-01' as scd_end_date
+    		,1 as scd_current_flag
+    		,@source_system_id
+			,@batchid
+    		,getdate()
+    		,getdate()
+    		,1
+
+    FROM #DistinctStageRows stage
+	LEFT JOIN  [finance].[journal_dim] dim 
+	ON 	 [stage].journal_number= [dim].journal_number
+	WHERE [dim].[journal_number] IS  NULL 
+	
+
+		  --exception handling
+
+
+	INSERT INTO [exception].[invalid_stage_records] 
+	( [batch_id]
+      ,[exception_type]
+	  ,[check_column]
+      ,[stage_tbl_name]
+      ,[column1]
+      ,[column2]
+      ,[column3]
+--	  ,[column4]
+--	  ,[column5]
+	  ,[insert_datetime]
+	  )
+	SELECT  
+	   @batchid
+	  ,'Invalid Operational Id' as [exception_type]
+	  ,'journal_number' as check_column
+	  ,'[stage].[journal]' as [source_file]
+	  ,[stage].[journal_number] as column1 
+	  ,[stage].[Status] column2
+	  ,[stage].[Source] as column3
+--	  ,[stage].[line_memo] as column4
+--	  ,[stage].[worktags] as column5
+	  ,getdate() as insert_datetime
+    FROM [stage].[journal] stage 
+	WHERE [stage].[journal_number] IS  NULL OR [stage].[journal_number]  = '' 
+
+
+	END TRY
+	BEGIN CATCH
+	IF @@TRANCOUNT > 0  
+	BEGIN	
+	ROLLBACK TRANSACTION;
+
+	SET @error_message = (SELECT error_message()+'in the SP: finance.s_dim_journal')
+
+	SELECT @error_message as [error_message]
+	
+	END
+	END CATCH; 
+
+	IF @@TRANCOUNT > 0  
+	BEGIN
+    COMMIT TRANSACTION; 
+	SET @error_message =''
+
+	SELECT @error_message as [error_message]
+	END
+	
