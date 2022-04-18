@@ -1,0 +1,59 @@
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER PROC [historical].[s_ft_call_assignment] AS begin
+
+TRUNCATE TABLE ipfx.call_assignment_fact
+
+SET IDENTITY_INSERT ipfx.call_assignment_fact ON
+
+INSERT INTO ipfx.call_assignment_fact
+      ([call_assignment_key]
+      ,[request_id]
+      ,[previous_hornbill_team]
+      ,[hornbill_user_key_1]
+      ,[previous_hornbill_user_key]
+      ,[assignment_date_sr_key]
+      ,[call_assignment_datetime]
+      ,[request_resolve_by_date_sr_key]
+      ,[request_resolve_by_datetime]
+      ,[hornbill_team]
+      ,[summary]
+      ,[status]
+      ,[breach_status]
+      ,[source_system_id]
+      ,[batch_id]
+      ,[insert_datetime]
+      ,[update_datetime]
+      ,[active_flag])
+SELECT 
+      ISNULL([call_assignment_key],'') AS [call_assignment_key]
+      ,ISNULL([request_id],'')	AS [request_id]
+      ,ISNULL([previous_hornbill_team],'') AS [previous_hornbill_team]
+      ,ISNULL([hornbill_user_key],'') AS [hornbill_user_key_1]
+      ,ISNULL([previous_hornbill_user_key],'')  AS [previous_hornbill_user_key]
+	  ,ISNULL([assignment_date_key],'')  AS [assignment_date_sr_key]
+           ,CASE WHEN [assignment_date_key] NOT IN (-1,0) THEN
+	        CAST(CONCAT(CAST([assignment_date_key] AS DATE),' ',ISNULL(etd.time_of_day,'00:00:00')) AS DATETIME2(0)) 
+			ELSE '' END  AS [call_assignment_datetime]
+	,ISNULL([request_resolve_by_date_key],'') AS [request_resolve_by_date_sr_key]
+	  ,CASE WHEN [request_resolve_by_date_key] NOT IN (-1,0) THEN
+		    CAST(CONCAT(CAST([request_resolve_by_date_key] AS DATE),' ',ISNULL(sd.time_of_day,'00:00:00')) AS DATETIME2(0)) 
+		    ELSE '' END  AS [request_resolve_by_datetime]
+      ,ISNULL([hornbill_team],'') AS [hornbill_team]
+      ,ISNULL([summary],'') AS [summary]
+      ,ISNULL([status],'') AS [status]
+      ,ISNULL([breach_status],'') AS [breach_status]
+      ,0 [source_system_id]
+      ,0 [batch_id]
+      ,getdate() [insert_datetime]
+      ,getdate() [update_datetime]
+      ,1 [active_flag]
+  from [historical].[ft_call_assignment] c
+  left join (Select distinct time_key, time_of_day from domain.time_dim ) etd on c.[assignment_time_key] = etd.time_key
+  left join (Select distinct time_key, time_of_day from domain.time_dim ) sd on  c.[request_resolve_by_time_key] = sd.time_key
+
+
+SET IDENTITY_INSERT ipfx.call_assignment_fact OFF
+END
