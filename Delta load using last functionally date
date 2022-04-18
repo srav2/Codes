@@ -1,0 +1,352 @@
+/****** Object:  StoredProcedure [hr].[s_fact_compensation]    Script Date: 18/04/2022 13:05:27 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER PROC [hr].[s_fact_compensation] @batchid [bigint],@source_system_id [int],@error_message [varchar](8000) OUT AS
+BEGIN
+
+SET NOCOUNT ON
+
+  DECLARE @maxdate datetime;
+
+	SET  @maxdate = (SELECT ISNULL(MAX(last_functionally_updated),'1899-01-01') FROM [hr].[compensation_fact]  WHERE [source_system_id] = 1 
+	                         AND  last_functionally_updated <> '2099-01-01')
+
+SELECT  
+		 A.employee_id
+		,A.max_effective_date
+		,B.comp_hist_guid
+		INTO #maxeffectivedate
+FROM (select employee_id,cast(max(effective_date)as date) as max_effective_date from [stage].[compensation] 
+		where effective_date in
+					(select effective_date from [stage].[compensation] where effective_date<= cast(getdate()as date))
+					group by employee_id)A 
+join [stage].[compensation] B
+ON A.employee_id=B.employee_id
+
+
+  SELECT *	INTO #DistinctStageRows
+				FROM
+					(
+					SELECT row_number() over(partition by [comp_hist_guid]    order by [comp_hist_guid] ) as RN
+					,stage.employee_id
+					,CAST(stage.effective_date AS DATE) as effective_date
+					,stage.date_and_time_completed
+					,CAST(ISNULL(NULLIF(stage.[scheduled_hours_current],''),'0') AS DECIMAL(15,2)) as previous_normal_hours
+					,cast(ISNULL(NULLIF(stage.[scheduled_hours_proposed],''),'0')as DECIMAL(15,2)) as normal_hours
+					,ISNULL(stage.[time_type_current],'') as previous_fte_category
+					,ISNULL(stage.[time_type_proposed],'') as fte_category
+					,ISNULL(stage.[employee_contingent_worker_type_current],'') as previous_worker_sub_type
+					,ISNULL(stage.[employee_contingent_worker_type_proposed],'') as Worker_sub_type
+					,ISNULL(stage.[location_current],'') as previous_location
+					,ISNULL(stage.[location_proposed],'') as location
+					,ISNULL(stage.[status],'') as change_status
+					,ISNULL(stage.[staffing_event_reason_category],'') as change_type
+					,ISNULL(stage.[staffing_event_reason_subcategory],'') as change_sub_type
+					,ISNULL(stage.[compensation_grade_current],'') as previous_job_grade
+					,ISNULL(stage.[compensation_grade_proposed],'') as job_grade
+					,ISNULL(stage.[compensation_grade_profile_current],'') as previous_job_sub_grade
+					,ISNULL(stage.[compensation_grade_profile_proposed],'') as job_sub_grade		
+					,CAST(ISNULL(NULLIF(stage.base_pay_current,''),'0') AS DECIMAL(15,2)) as previous_total_Base_Pay_Amount
+					,CAST(ISNULL(NULLIF(stage.[base_pay_proposed],''),'0') AS DECIMAL(15,2)) as total_base_pay_amount			
+					,ISNULL(stage.[base_pay_current_frequency],'') as previous_base_pay_frequency
+					,ISNULL(stage.[base_pay_proposed_frequency],'') as base_pay_frequency
+					,CAST(ISNULL(NULLIF(stage.[bonus_percent_current],''),'0') AS DECIMAL(15,2)) as previous_bonus_percent				
+					,CAST(ISNULL(NULLIF(stage.[bonus_percent_proposed],''),'0') AS DECIMAL(15,2)) as bonus_percent				
+					,CAST(ISNULL(NULLIF(stage.[bonus_amount_current],''),'0') AS DECIMAL(15,2)) as previous_bonus_amount				
+					,CAST(ISNULL(NULLIF(stage.bonus_amount_proposed,''),'0') AS DECIMAL(15,2)) as bonus_amount					
+					,ISNULL(stage.[assignment_type_current],'') as previous_assignment_type
+					,ISNULL(stage.[assignment_type_proposed],'') as assignment_type
+					,CAST(ISNULL(stage.[expected_assignment_end_date_current],'2099-01-01') as DATE)as previous_assignment_end_date
+					,CAST(ISNULL(stage.[expected_assignment_end_date_proposed],'2099-01-01') as Date)assignment_end_date			
+					,CAST(ISNULL(NULLIF(stage.hourly_rate_current_amount,''),'0') AS DECIMAL(15,2)) as previous_contract_hourly_rate	
+					,CAST(ISNULL(NULLIF(stage.[hourly_rate_proposed_amount],''),'0') AS DECIMAL(15,2)) as contract_hourly_rate
+					,CAST(ISNULL(stage.[contract_end_date_current],'2099-01-01') AS DATE) as previous_contract_end_date
+					,CAST(ISNULL(stage.[contract_end_date_proposed],'2099-01-01') AS DATE) as contract_end_date
+					,ISNULL([comp_hist_guid],'') as [comp_hist_guid]
+					,Cast(concat(convert(varchar(10),COALESCE(NULLIF([last_functionally_updated],''),'2099-01-01')),replace(substring(COALESCE(NULLIF([last_functionally_updated],''),'2099-01-01'),11,12),'-',' ')) as datetime)   as [last_functionally_updated]
+					from stage.compensation stage 
+				where Cast(concat(convert(varchar(10),COALESCE(NULLIF([last_functionally_updated],''),'2099-01-01')),replace(substring(COALESCE(NULLIF([last_functionally_updated],''),'2099-01-01'),11,12),'-',' ')) as datetime) > @maxdate
+			) A
+			WHERE RN = 1
+
+
+
+
+	        SELECT comp_hist_guid
+					,employee_sr_key
+					,effective_date_sr_key
+					,date_completed_sr_key
+					,previous_normal_hours
+					,normal_hours
+					,previous_fte_category
+					,fte_category
+					,previous_worker_sub_type
+					,worker_sub_type
+					,previous_location
+					,location
+					,change_status
+					,change_type
+					,change_sub_type
+					,previous_job_grade
+					,job_grade
+					,previous_job_sub_grade
+					,job_sub_grade
+					,previous_total_base_pay_amount
+					,total_base_pay_amount
+					,previous_base_pay_frequency
+					,base_pay_frequency
+					,previous_bonus_percent
+					,bonus_percent
+					,previous_bonus_amount
+					,bonus_amount
+					,previous_assignment_type
+					,assignment_type
+					,previous_assignment_end_date 
+					,assignment_end_date 
+					,previous_contract_hourly_rate
+					,contract_hourly_rate
+					,previous_contract_end_date 
+					,contract_end_date 
+					,[most_recent_flag]
+					,@source_system_id as source_system_id
+					,@batchid as batch_id
+					,getdate() as insert_datetime
+					,getdate() as update_datetime
+					,CASE when [most_recent_flag]='Y' then 1 else 0 end as Active_flag
+					,[last_functionally_updated]
+									 
+					INTO #GetSRKeys 
+									 
+					FROM(
+												
+							SELECT   stage.[comp_hist_guid]
+									,IsNull(emp.employee_sr_key,0) as employee_sr_key
+									,IsNULL(eff.calendar_sr_key,0) as effective_date_sr_key
+									,IsNULL(dat.calendar_sr_key,0) as date_completed_sr_key
+									,stage.previous_normal_hours
+									,stage.normal_hours
+									,stage.previous_fte_category
+									,stage.fte_category
+									,stage.previous_worker_sub_type
+									,stage.worker_sub_type
+									,stage.previous_location
+									,stage.location
+									,stage.change_status
+									,stage.change_type
+									,stage.change_sub_type
+									,stage.previous_job_grade
+									,stage.job_grade
+									,stage.previous_job_sub_grade
+									,stage.job_sub_grade
+									,stage.previous_total_base_pay_amount
+									,stage.total_base_pay_amount
+									,stage.previous_base_pay_frequency
+									,stage.base_pay_frequency
+									,stage.previous_bonus_percent
+									,stage.bonus_percent
+									,stage.previous_bonus_amount
+									,stage.bonus_amount
+									,stage.previous_assignment_type
+									,stage.assignment_type
+									,stage.previous_assignment_end_date 
+									,stage.assignment_end_date 
+									,stage.previous_contract_hourly_rate
+									,stage.contract_hourly_rate
+									,stage.previous_contract_end_date 
+									,stage.contract_end_date 
+									,Case when stage.effective_date = maxeff.max_effective_date then 'Y' else 'N'  End as [most_recent_flag]
+									,stage.[last_functionally_updated]
+
+FROM #DistinctStageRows	stage
+LEFT JOIN #maxeffectivedate maxeff ON stage.employee_id=maxeff.employee_id and stage.comp_hist_guid=maxeff.comp_hist_guid
+LEFT JOIN hr.employee_dim_new emp ON stage.employee_id = emp.employee_number AND stage.employee_id <> '' AND emp.scd_current_flag = 1
+LEFT JOIN domain.calendar_dim eff ON stage.effective_date = eff.date AND stage.effective_date <>'' AND eff.active_flag = 1
+LEFT JOIN domain.calendar_dim dat ON stage.date_and_time_completed  = dat.date AND stage.date_and_time_completed <>'' AND eff.active_flag = 1)A
+
+				
+				
+BEGIN TRANSACTION
+
+BEGIN TRY;
+
+
+UPDATE [hr].[compensation_fact] SET 
+				 employee_sr_key								= stage.[employee_sr_key]
+				,effective_date_sr_key							= stage.[effective_date_sr_key]
+				,date_completed_sr_key							= stage.[date_completed_sr_key]
+				,previous_normal_hours							= stage.previous_normal_hours
+				,normal_hours									= stage.normal_hours
+				,previous_fte_category							= stage.previous_fte_category
+				,fte_category									= stage.fte_category
+				,previous_worker_sub_type						= stage.previous_worker_sub_type
+				,worker_sub_type								= stage.worker_sub_type
+				,previous_location								= stage.previous_location
+				,location										= stage.location
+				,change_status									= stage.change_status
+				,change_type									= stage.change_type
+				,change_sub_type								= stage.change_sub_type
+				,previous_job_grade								= stage.previous_job_grade
+				,job_grade										= stage.job_grade
+				,previous_job_sub_grade							= stage.previous_job_sub_grade
+				,job_sub_grade									= stage.job_sub_grade
+				,previous_total_base_pay_amount					= stage.previous_total_base_pay_amount
+				,total_base_pay_amount							= stage.total_base_pay_amount
+				,previous_base_pay_frequency					= stage.previous_base_pay_frequency
+				,base_pay_frequency								= stage.base_pay_frequency
+				,previous_bonus_percent							= stage.previous_bonus_percent
+				,bonus_percent									= stage.bonus_percent
+				,previous_bonus_amount							= stage.previous_bonus_amount
+				,bonus_amount									= stage.bonus_amount
+				,previous_assignment_type						= stage.previous_assignment_type
+				,assignment_type								= stage.assignment_type
+				,previous_assignment_end_date					= stage.previous_assignment_end_date
+				,assignment_end_date							= stage.assignment_end_date
+				,previous_contract_hourly_rate					= stage.previous_contract_hourly_rate
+				,previous_contract_end_date						= stage.previous_contract_end_date
+				,contract_end_date								= stage.contract_end_date
+				,[last_functionally_updated]					= stage.[last_functionally_updated]
+
+From #GetSRKeys stage INNER JOIN [hr].[compensation_fact] fact
+ON stage.[comp_hist_guid]=fact.[comp_hist_guid]
+
+end try 
+	begin catch 
+	if @@trancount > 0  
+	begin
+		select error_message()+'in the SP:  [hr].[s_fact_compensation]'
+		
+        rollback transaction;
+	end
+	end catch; 
+
+	if @@trancount > 0  
+    commit transaction;  
+
+
+--	#max_effective_date_sr_key--			 
+SELECT 
+		B.effective_date_sr_key
+		,B.employee_id
+		,C.comp_hist_guid 
+		INTO #max_effective_date_sr_key
+FROM 
+			(select effective_date_sr_key,employee_id from (select max(fact.effective_date_sr_key) as effective_date_sr_key ,stage.employee_id 
+			from [hr].[compensation_fact] fact join stage.compensation stage on fact.comp_hist_guid=stage.comp_hist_guid 
+			where fact.effective_date_sr_key<=CAST(CONVERT(char(8),getdate(),112) AS INT)
+			group by stage.employee_id
+			)A
+)B
+JOIN stage.compensation C ON B.employee_id=C.employee_id
+
+BEGIN TRANSACTION
+
+BEGIN TRY;
+
+
+--Update Most recent flag and active flag
+
+UPDATE [hr].[compensation_fact] SET most_recent_flag = Case when CAST(CONVERT(char(8),maxeff.max_effective_date,112) AS INT) <> fact.effective_date_sr_key then 'N' else 'Y'  End 
+From [hr].[compensation_fact] fact 
+INNER JOIN #GetSRKeys stage  
+ON  stage.[comp_hist_guid]=fact.[comp_hist_guid] 
+LEFT JOIN #maxeffectivedate maxeff ON fact.comp_hist_guid = maxeff.comp_hist_guid 
+
+UPDATE [hr].[compensation_fact] SET most_recent_flag = Case when fact.effective_date_sr_key <> maxeffsrkey.effective_date_sr_key then 'N' else 'Y' End
+From [hr].[compensation_fact] fact 
+INNER JOIN stage.compensation stage ON fact.comp_hist_guid = stage.comp_hist_guid
+LEFT JOIN #max_effective_date_sr_key maxeffsrkey ON stage.employee_id=maxeffsrkey.employee_id
+
+UPDATE [hr].[compensation_fact] SET active_flag = Case when fact.most_recent_flag='Y' then 1 else 0 END
+From [hr].[compensation_fact] fact 
+
+
+INSERT INTO [hr].[compensation_fact]
+SELECT stage.[comp_hist_guid]
+      ,stage.[employee_sr_key]
+      ,stage.[effective_date_sr_key]
+      ,stage.[date_completed_sr_key]
+      ,stage.[previous_normal_hours]
+      ,stage.[normal_hours]
+      ,stage.[previous_fte_category]
+      ,stage.[fte_category]
+      ,stage.[previous_worker_sub_type]
+      ,stage.[worker_sub_type]
+      ,stage.[previous_location]
+      ,stage.[location]
+      ,stage.[change_status]
+      ,stage.[change_type]
+      ,stage.[change_sub_type]
+      ,stage.[previous_job_grade]
+      ,stage.[job_grade]
+      ,stage.[previous_job_sub_grade]
+      ,stage.[job_sub_grade]
+      ,stage.[previous_total_base_pay_amount]
+      ,stage.[total_base_pay_amount]
+      ,stage.[previous_base_pay_frequency]
+      ,stage.[base_pay_frequency]
+      ,stage.[previous_bonus_percent]
+      ,stage.[bonus_percent]
+      ,stage.[previous_bonus_amount]
+      ,stage.[bonus_amount]
+      ,stage.[previous_assignment_type]
+      ,stage.[assignment_type]
+      ,stage.[previous_assignment_end_date]
+      ,stage.[assignment_end_date]
+      ,stage.[previous_contract_hourly_rate]
+      ,stage.[contract_hourly_rate]
+      ,stage.[previous_contract_end_date]
+      ,stage.[contract_end_date]
+      ,stage.[most_recent_flag]
+      ,stage.[last_functionally_updated]
+      ,stage.[source_system_id]
+      ,stage.[batch_id]
+      ,stage.[insert_datetime]
+      ,stage.[update_datetime]
+      ,stage.[active_flag]
+FROM #GetSRKeys stage
+LEFT JOIN [hr].[compensation_fact] fact ON
+stage.[comp_hist_guid]=fact.[comp_hist_guid]
+WHERE fact.employee_sr_key IS NULL 
+
+UPDATE fact SET employee_sr_key = newemp.employee_sr_key
+	   FROM [hr].[compensation_fact] fact 
+INNER JOIN [hr].[employee_dim_new] emp    ON  fact.employee_sr_key  = emp.employee_sr_key AND emp.scd_current_flag = 0
+INNER JOIN [hr].[employee_dim_new] newemp ON newemp.employee_number = emp.employee_number AND newemp.scd_current_flag = 1
+
+
+END TRY
+BEGIN CATCH
+IF @@TRANCOUNT > 0
+BEGIN
+ROLLBACK TRANSACTION;
+
+
+
+SET @error_message = (SELECT error_message()+'in the SP: [hr].[s_fact_compensation]')
+
+
+
+SELECT @error_message as [error_message]
+
+END
+END CATCH;
+
+
+
+IF @@TRANCOUNT > 0
+BEGIN
+COMMIT TRANSACTION;
+SET @error_message =''
+
+
+
+SELECT @error_message as [error_message]
+END
+
+
+
+
+
+END
